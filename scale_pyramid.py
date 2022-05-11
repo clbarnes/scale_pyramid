@@ -8,7 +8,6 @@ import zarr
 # monkey-patch os.mkdirs, due to bug in zarr
 import os
 import logging
-import re
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +189,7 @@ def parse_chunk(s):
         return [int(c.strip()) for c in s.split(",")]
 
 
-def main(args=None):
+def main(in_args=None):
     parser = argparse.ArgumentParser(
         description="Create a scale pyramid for a zarr/N5 container."
     )
@@ -229,7 +228,7 @@ def main(args=None):
     )
     parser.add_argument("--log-file", "-l", help="Log file path (appends if exists).")
 
-    args = parser.parse_args()
+    args = parser.parse_args(in_args)
     log_kwargs = {"level": logging.INFO}
     if args.log_file:
         log_kwargs["filename"] = args.log_file
