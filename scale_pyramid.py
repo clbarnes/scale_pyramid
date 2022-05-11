@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import argparse
 import daisy
 import numpy as np
@@ -99,31 +100,44 @@ def create_scale_pyramid(
 
     prev_array = daisy.open_ds(in_file, ds_name)
 
-    if chunk_shape is not None:
-        chunk_shape = daisy.Coordinate(chunk_shape)
-    else:
-        chunk_shape = daisy.Coordinate(prev_array.data.chunks)
-        logger.info("Reusing chunk shape of %s for new datasets" % (chunk_shape,))
-
     if prev_array.n_channel_dims == 0:
         num_channels = 1
+        ndims = len(prev_array.shape)
     elif prev_array.n_channel_dims == 1:
         num_channels = prev_array.shape[0]
+        ndims = len(prev_array.shape) - 1
     else:
         raise RuntimeError(">1 channel dimension not yet implemented")
 
+    if chunk_shape is None:
+        chunk_shape = daisy.Coordinate(prev_array.data.chunks)
+        logger.info("Reusing chunk shape of %s for new datasets" % (chunk_shape,))
+    elif prev_array.n_channel_dims:
+        if np.isscalar(chunk_shape):
+            chunk_shape = daisy.Coordinate((num_channels,) + (chunk_shape,) * ndims)
+        elif len(chunk_shape) == prev_array.shape:
+            if chunk_shape[0] != num_channels:
+                raise ValueError(f"Chunk shape does not match channel count: first dim must be {num_channels} or omitted")
+            chunk_shape = daisy.Coordinate(chunk_shape)
+        elif len(chunk_shape) == ndims:
+            chunk_shape = daisy.Coordinate((num_channels, *chunk_shape))
+        else:
+            raise ValueError("Chunk shape must be a scalar, or match the array dimensions, or match the non-channel array dimensions")
+    else:
+        if np.isscalar(chunk_shape):
+            chunk_shape = daisy.Coordinate((chunk_shape,) * ndims)
+        elif len(chunk_shape) == ndims:
+            chunk_shape = daisy.Coordinate(chunk_shape)
+        else:
+            raise ValueError("Chunk shape must be a scalar, or match the array dimensions")
+
     for scale_num, scale in enumerate(scales):
-        ndim = chunk_shape.dims()
-        try:
-            if len(scale) == ndim:
-                scale = daisy.Coordinate(scale)
-            else:
-                raise ValueError(
-                    "Scale must be a scalar or list "
-                    "with the same length as the chunk shape"
-                )
-        except TypeError:
-            scale = daisy.Coordinate((scale,) * ndim)
+        if np.isscalar(scale):
+            scale = daisy.Coordinate((scale,) * ndims)
+        elif len(scale) == ndims:
+            scale = daisy.Coordinate(scale)
+        else:
+            raise ValueError("Scale must a scalar, or list with the same length as the non-channel dimensions")
 
         next_voxel_size = prev_array.voxel_size * scale
         next_total_roi = prev_array.roi.snap_to_grid(next_voxel_size, mode="grow")
@@ -197,7 +211,7 @@ if __name__ == "__main__":
         default=DEFAULT_WORKERS,
         help=f"Number of workers, default {DEFAULT_WORKERS}",
     )
-    parser.add_argument("--log-file", "-l", help="Log file path (appends if exists)")
+    parser.add_argument("--log-file", "-l", help="Log file path (appends if exists).")
 
     args = parser.parse_args()
     log_kwargs = {"level": logging.INFO}
@@ -207,5 +221,5 @@ if __name__ == "__main__":
     logging.basicConfig(**log_kwargs)
 
     create_scale_pyramid(
-        args.file, args.ds, args.scales, args.chunk_shape, args.workers
+        args.file, args.array, args.scales, args.chunk_shape, args.workers
     )
