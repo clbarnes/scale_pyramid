@@ -8,11 +8,21 @@ import zarr
 # monkey-patch os.mkdirs, due to bug in zarr
 import os
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
 prev_makedirs = os.makedirs
 DEFAULT_WORKERS = 60
+
+
+def extract_scale(s):
+    if s[0] != "s":
+        return None
+    try:
+        return int(s[1:])
+    except ValueError:
+        return None
 
 
 def makedirs(name, mode=0o777, exist_ok=False):
@@ -83,7 +93,9 @@ def create_scale_pyramid(
     except Exception:
         raise RuntimeError("%s does not seem to be a dataset" % in_ds_name)
 
-    if not in_ds_name.endswith("/s0"):
+    lowest_scale = extract_scale(in_ds_name.split("/")[-1])
+
+    if lowest_scale is None:
 
         ds_name = in_ds_name + "/s0"
 
@@ -91,10 +103,12 @@ def create_scale_pyramid(
         ds.store.rename(in_ds_name, in_ds_name + "__tmp")
         ds.store.rename(in_ds_name + "__tmp", ds_name)
 
+        lowest_scale = 0
+
     else:
 
         ds_name = in_ds_name
-        in_ds_name = in_ds_name[:-3]
+        in_ds_name = "/".join(in_ds_name.split("/")[:-1])
 
     logger.info("Scaling %s by a factor of %s", in_file, scales)
 
@@ -131,7 +145,7 @@ def create_scale_pyramid(
         else:
             raise ValueError("Chunk shape must be a scalar, or match the array dimensions")
 
-    for scale_num, scale in enumerate(scales):
+    for scale_num, scale in enumerate(scales, lowest_scale + 1):
         if np.isscalar(scale):
             scale = daisy.Coordinate((scale,) * ndims)
         elif len(scale) == ndims:
@@ -147,7 +161,7 @@ def create_scale_pyramid(
         logger.info("Next total ROI: %s", next_total_roi)
         logger.info("Next chunk size: %s", next_write_size)
 
-        next_ds_name = in_ds_name + "/s" + str(scale_num + 1)
+        next_ds_name = in_ds_name + "/s" + str(scale_num)
         logger.info("Preparing %s", next_ds_name)
 
         next_array = daisy.prepare_ds(
@@ -192,6 +206,8 @@ if __name__ == "__main__":
             "Scale levels. Each scale level is separated by colons, "
             "and can be given as a single integer (for isotropic scaling) "
             "or a comma-separated list of integers for anisotropic. "
+            "Scale levels refer to the voxel size of the previous scale, "
+            "not the base scale. "
             "e.g. '2,2,1;2,2,1;2;2;2;2;2'"
         ),
     )
