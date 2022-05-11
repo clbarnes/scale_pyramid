@@ -190,9 +190,9 @@ def parse_chunk(s):
         return [int(c.strip()) for c in s.split(",")]
 
 
-if __name__ == "__main__":
+def main(args=None):
     parser = argparse.ArgumentParser(
-        description="Create a scale pyramide for a zarr/N5 container."
+        description="Create a scale pyramid for a zarr/N5 container."
     )
 
     parser.add_argument("file", help="The input container")
@@ -239,3 +239,7 @@ if __name__ == "__main__":
     create_scale_pyramid(
         args.file, args.array, args.scales, args.chunk_shape, args.workers
     )
+
+
+if __name__ == "__main__":
+    main()
